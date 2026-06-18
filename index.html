@@ -1,0 +1,1324 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>BETRACK PRO · Poste de garde</title>
+
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+<style>
+/* ════════════════════════════════════════════════════════════
+   BETRACK PRO — "Poste de garde numérique"
+   Identité: carnet de terrain d'éleveur × salle de contrôle.
+   Palette terre/cuivre/sarcelle — pas de vert néon générique.
+   ════════════════════════════════════════════════════════════ */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { -webkit-tap-highlight-color: transparent; }
+
+:root {
+  /* ---- Couleurs nuit (par défaut) ---- */
+  --night-0:      #07090c;
+  --night-1:      #0d1015;
+  --night-2:      #141821;
+  --night-3:      #1c212c;
+  --line:         rgba(244,237,225,0.08);
+  --line-2:       rgba(244,237,225,0.16);
+
+  --paper:        #f4ede1;     /* parchemin — texte principal sur fond nuit */
+  --paper-dim:     #9aa3ad;
+  --paper-mute:    #5b6470;
+
+  --copper:       #d97757;     /* signature — alerte/accent chaud */
+  --copper-dim:   #a85a40;
+  --teal:         #4a9b8e;     /* GPS / données spatiales */
+  --teal-dim:     #2f655c;
+  --ochre:        #e8b339;     /* attention */
+  --ember:        #e85d4e;     /* danger */
+  --sky:          #6fa8d9;     /* vitesse / mouvement */
+
+  --display:  'Fraunces', serif;
+  --sans:     'Inter', sans-serif;
+  --mono:     'IBM Plex Mono', monospace;
+
+  --r-sm: 10px;
+  --r-md: 16px;
+  --r-lg: 22px;
+  --sheet-peek: 132px;      /* hauteur visible de la fiche repliée (mobile) */
+  --sheet-w-desktop: 392px;
+}
+
+html[data-theme="light"] {
+  --night-0:  #f4ede1;
+  --night-1:  #ffffff;
+  --night-2:  #fbf7ef;
+  --night-3:  #efe7d8;
+  --line:     rgba(20,16,8,0.08);
+  --line-2:   rgba(20,16,8,0.15);
+
+  --paper:        #18140d;
+  --paper-dim:    #5e564a;
+  --paper-mute:   #9a9082;
+
+  --copper:   #c2603f;
+  --copper-dim: #a14e30;
+  --teal:     #2d7d70;
+  --teal-dim: #1f5d53;
+  --ochre:    #b4811a;
+  --ember:    #c8392a;
+  --sky:      #2f6fa8;
+}
+
+body {
+  font-family: var(--sans);
+  height: 100vh; width: 100vw;
+  background: var(--night-0);
+  color: var(--paper);
+  overflow: hidden;
+  position: relative;
+}
+
+#map { position: absolute; inset: 0; z-index: 1; }
+
+/* texture grain subtile sur fond nuit — évoque le papier de terrain */
+body::before {
+  content: '';
+  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+}
+
+::selection { background: var(--copper); color: var(--night-0); }
+
+/* scrollbars discrètes partout */
+.scroll-thin::-webkit-scrollbar { width: 4px; }
+.scroll-thin::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 4px; }
+.scroll-thin::-webkit-scrollbar-track { background: transparent; }
+
+/* focus visible accessible */
+button:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--copper);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+}
+
+/* ════════════════════════════════════════════════════════════
+   TOPBAR — bandeau supérieur ancré, pas de pilule flottante
+   ════════════════════════════════════════════════════════════ */
+#topbar {
+  position: absolute; top: 0; left: 0; right: 0;
+  z-index: 200;
+  display: flex; align-items: center; gap: 14px;
+  padding: max(14px, env(safe-area-inset-top)) 16px 14px;
+  background: linear-gradient(to bottom, rgba(7,9,12,0.92) 0%, rgba(7,9,12,0.55) 70%, transparent 100%);
+  pointer-events: none;
+}
+html[data-theme="light"] #topbar {
+  background: linear-gradient(to bottom, rgba(244,237,225,0.95) 0%, rgba(244,237,225,0.6) 70%, transparent 100%);
+}
+#topbar > * { pointer-events: all; }
+
+.seal {
+  width: 40px; height: 40px; flex-shrink: 0;
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+}
+.seal-ring {
+  position: absolute; inset: 0;
+  border: 1.5px solid var(--copper);
+  border-radius: 50%;
+  opacity: 0.55;
+}
+.seal-ring.pulse {
+  animation: sealPulse 2.6s cubic-bezier(0.25,0.6,0.4,1) infinite;
+}
+@keyframes sealPulse {
+  0%   { transform: scale(0.78); opacity: 0.7; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+.seal-core {
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--copper);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.2) inset;
+}
+
+.brandblock { display: flex; flex-direction: column; line-height: 1.05; flex-shrink: 0; }
+.brand-name {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 17px;
+  letter-spacing: 0.01em;
+  color: var(--paper);
+}
+.brand-tag {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  color: var(--paper-mute);
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+.tb-spacer { flex: 1; }
+
+/* Statut — texte + point, pas de pilule */
+#statusGroup {
+  display: flex; align-items: center; gap: 8px;
+  font-family: var(--mono);
+}
+.dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot-wait { background: var(--ochre); animation: blink 1.7s ease-in-out infinite; }
+.dot-live { background: var(--teal); box-shadow: 0 0 7px var(--teal); }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.25} }
+#statusTxt { font-size: 10px; letter-spacing: 0.12em; color: var(--paper-dim); text-transform: uppercase; }
+
+/* Cloche notifications */
+#notif-bell {
+  width: 38px; height: 38px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; position: relative;
+  background: var(--night-2);
+  border: 1px solid var(--line-2);
+  flex-shrink: 0;
+  transition: background 0.18s, border-color 0.18s;
+}
+#notif-bell:hover { background: var(--night-3); }
+#notif-bell:active { transform: scale(0.94); }
+#notif-badge {
+  position: absolute; top: -3px; right: -3px;
+  min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: 8px;
+  background: var(--ember); color: var(--night-0);
+  font-family: var(--mono); font-size: 9px; font-weight: 700;
+  display: none; align-items: center; justify-content: center;
+  border: 2px solid var(--night-0);
+}
+#notif-badge.show { display: flex; }
+
+/* Bouton thème */
+#themeToggle {
+  width: 38px; height: 38px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  background: var(--night-2);
+  border: 1px solid var(--line-2);
+  flex-shrink: 0;
+  transition: background 0.18s;
+}
+#themeToggle:hover { background: var(--night-3); }
+#themeToggle:active { transform: scale(0.94); }
+
+@media (max-width: 480px) {
+  .brand-tag { display: none; }
+  #topbar { gap: 10px; padding: max(12px, env(safe-area-inset-top)) 12px 12px; }
+}
+
+/* ════════════════════════════════════════════════════════════
+   PANNEAU NOTIFICATIONS
+   ════════════════════════════════════════════════════════════ */
+#notif-panel {
+  position: absolute; top: 64px; right: 14px;
+  width: 320px; max-height: 60vh;
+  background: var(--night-1);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  z-index: 260;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.5);
+  display: flex; flex-direction: column;
+  opacity: 0; pointer-events: none;
+  transform: translateY(-8px) scale(0.98);
+  transform-origin: top right;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+#notif-panel.open { opacity: 1; pointer-events: all; transform: translateY(0) scale(1); }
+.np-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.np-title {
+  font-family: var(--mono); font-size: 10.5px; font-weight: 600;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--paper);
+}
+.np-clear {
+  font-family: var(--mono); font-size: 9.5px; color: var(--sky); cursor: pointer;
+  letter-spacing: 0.06em; padding: 3px 7px; border-radius: 6px;
+}
+.np-clear:hover { background: var(--night-2); }
+.np-list { flex: 1; overflow-y: auto; padding: 6px 8px; }
+.np-empty {
+  text-align: center; color: var(--paper-mute); font-size: 12px;
+  padding: 30px 10px; display: flex; flex-direction: column; align-items: center; gap: 10px;
+}
+.np-item {
+  display: flex; gap: 10px; padding: 10px; border-radius: var(--r-sm);
+  margin-bottom: 3px; border: 1px solid transparent;
+  animation: slideInNotif 0.22s ease;
+}
+@keyframes slideInNotif { from{opacity:0; transform:translateY(-5px);} to{opacity:1; transform:translateY(0);} }
+.np-item.unread { background: var(--night-2); border-color: var(--line); }
+.np-item.read { opacity: 0.5; }
+.np-dot { width: 7px; height: 7px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
+.np-body { flex: 1; min-width: 0; }
+.np-tag {
+  display: inline-block; font-family: var(--mono); font-size: 8.5px; font-weight: 700;
+  padding: 1.5px 6px; border-radius: 4px; margin-bottom: 4px; letter-spacing: 0.07em; text-transform: uppercase;
+}
+.np-msg { font-size: 12px; color: var(--paper); line-height: 1.4; }
+.np-time { font-family: var(--mono); font-size: 9.5px; color: var(--paper-mute); margin-top: 3px; }
+
+/* ════════════════════════════════════════════════════════════
+   TOAST
+   ════════════════════════════════════════════════════════════ */
+#toast-container {
+  position: absolute; top: 70px; left: 50%; transform: translateX(-50%);
+  z-index: 280; display: flex; flex-direction: column;
+  gap: 8px; align-items: center; pointer-events: none; width: 340px; max-width: calc(100vw - 24px);
+}
+.toast {
+  display: flex; align-items: flex-start; gap: 11px;
+  background: var(--night-1); border: 1px solid var(--line-2);
+  border-radius: var(--r-md); padding: 12px 14px;
+  box-shadow: 0 10px 32px rgba(0,0,0,0.45);
+  width: 100%; pointer-events: all;
+  animation: toastIn 0.3s cubic-bezier(0.25,0.7,0.4,1);
+  transition: opacity 0.25s, transform 0.25s;
+  position: relative; overflow: hidden;
+}
+.toast.hiding { opacity: 0; transform: translateY(-6px); }
+@keyframes toastIn { from{opacity:0; transform:translateY(-10px) scale(0.96);} to{opacity:1; transform:translateY(0) scale(1);} }
+.toast-icon { width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.toast-body { flex: 1; min-width: 0; }
+.toast-title { font-size: 12px; font-weight: 700; color: var(--paper); margin-bottom: 1px; }
+.toast-msg { font-size: 11px; color: var(--paper-dim); line-height: 1.4; }
+.toast-close { cursor: pointer; color: var(--paper-mute); font-size: 15px; line-height: 1; }
+.toast-bar { position: absolute; bottom: 0; left: 0; height: 2px; animation: toastBar linear forwards; }
+@keyframes toastBar { from{width:100%} to{width:0%} }
+
+/* ════════════════════════════════════════════════════════════
+   CONTRÔLES CARTE — colonne verticale, bord droit
+   ════════════════════════════════════════════════════════════ */
+.map-ctrl {
+  position: absolute; top: 84px; right: 14px;
+  z-index: 150; display: flex; flex-direction: column;
+  background: var(--night-1);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.35);
+}
+.ctrl-btn {
+  width: 42px; height: 42px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; background: transparent;
+  border-bottom: 1px solid var(--line);
+  transition: background 0.15s;
+}
+.map-ctrl .ctrl-btn:last-child { border-bottom: none; }
+.ctrl-btn:hover { background: var(--night-2); }
+.ctrl-btn:active { transform: scale(0.93); }
+
+/* Bouton flottant "ma position" au-dessus de la fiche */
+#recenter-fab {
+  position: absolute; z-index: 150;
+  right: 14px;
+  width: 44px; height: 44px; border-radius: 50%;
+  background: var(--copper);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(217,119,87,0.4);
+  transition: bottom 0.36s cubic-bezier(0.4,0,0.2,1), transform 0.15s;
+}
+#recenter-fab:active { transform: scale(0.93); }
+
+/* ════════════════════════════════════════════════════════════
+   FICHE DE DONNÉES — bottom sheet mobile / panneau droit desktop
+   Signature : carnet de terrain — onglet "poignée", arcs de jauge
+   ════════════════════════════════════════════════════════════ */
+#sheet {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  z-index: 220;
+  background: var(--night-1);
+  border-top: 1px solid var(--line-2);
+  border-radius: 22px 22px 0 0;
+  box-shadow: 0 -12px 40px rgba(0,0,0,0.35);
+  height: 86vh;
+  transform: translateY(calc(86vh - var(--sheet-peek)));
+  transition: transform 0.4s cubic-bezier(0.32,0.72,0,1);
+  display: flex; flex-direction: column;
+  touch-action: none;
+}
+#sheet.expanded { transform: translateY(0); }
+body.sheet-expanded #recenter-fab { bottom: calc(86vh + 14px); }
+body:not(.sheet-expanded) #recenter-fab { bottom: calc(var(--sheet-peek) + 14px); }
+
+.sheet-handle-zone {
+  flex-shrink: 0; padding: 10px 18px 6px;
+  cursor: grab;
+}
+.sheet-handle {
+  width: 38px; height: 4px; border-radius: 3px;
+  background: var(--line-2);
+  margin: 0 auto 14px;
+}
+
+.sheet-summary {
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 18px 14px;
+  cursor: pointer;
+}
+.subject-mark {
+  width: 46px; height: 46px; border-radius: 14px;
+  background: var(--night-3);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; position: relative;
+  border: 1px solid var(--line-2);
+}
+.subject-mark::after {
+  content: ''; position: absolute; bottom: -2px; right: -2px;
+  width: 11px; height: 11px; border-radius: 50%;
+  background: var(--teal); border: 2px solid var(--night-1);
+}
+.subject-id { font-family: var(--display); font-size: 17px; font-weight: 600; color: var(--paper); line-height: 1.1; }
+.subject-sub { font-family: var(--mono); font-size: 10.5px; color: var(--paper-mute); margin-top: 3px; letter-spacing: 0.04em; }
+
+.sheet-summary-right { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.summary-chip {
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  color: var(--paper-dim); text-align: right; line-height: 1.2;
+}
+.summary-chip b { color: var(--paper); font-size: 13px; display: block; }
+.chev {
+  width: 26px; height: 26px; border-radius: 50%;
+  background: var(--night-2); display: flex; align-items: center; justify-content: center;
+  transition: transform 0.35s cubic-bezier(0.4,0,0.2,1);
+  flex-shrink: 0;
+}
+#sheet.expanded .chev { transform: rotate(180deg); }
+
+.sheet-tabs {
+  display: flex; gap: 4px; padding: 0 14px;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.sheet-tab {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--paper-mute); padding: 10px 12px 12px;
+  cursor: pointer; position: relative; font-weight: 600;
+}
+.sheet-tab.active { color: var(--copper); }
+.sheet-tab.active::after {
+  content: ''; position: absolute; bottom: 0; left: 10px; right: 10px; height: 2px;
+  background: var(--copper); border-radius: 2px 2px 0 0;
+}
+
+.sheet-body { flex: 1; overflow-y: auto; padding: 16px 16px 28px; }
+.sheet-pane { display: none; flex-direction: column; gap: 12px; }
+.sheet-pane.active { display: flex; }
+
+/* ── Cartes de données façon "fiche carnet" ── */
+.field-card {
+  background: var(--night-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 14px 15px;
+}
+.field-label {
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--paper-mute); display: flex; align-items: center; gap: 6px; margin-bottom: 12px;
+}
+.field-label.accent { color: var(--teal); }
+
+.kv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.kv-cell { display: flex; flex-direction: column; gap: 3px; }
+.kv-key { font-size: 10px; color: var(--paper-mute); }
+.kv-val { font-family: var(--mono); font-size: 13.5px; font-weight: 600; color: var(--paper); }
+.kv-val.c-teal { color: var(--teal); }
+.kv-val.c-sky { color: var(--sky); }
+
+/* ── Jauge en arc (signature) — vitesse / batterie ── */
+.gauge-row { display: flex; align-items: center; gap: 18px; }
+.gauge-wrap { position: relative; width: 96px; height: 96px; flex-shrink: 0; }
+.gauge-wrap svg { transform: rotate(-90deg); }
+.gauge-track { fill: none; stroke: var(--night-3); stroke-width: 8; }
+.gauge-fill { fill: none; stroke-width: 8; stroke-linecap: round; transition: stroke-dasharray 0.5s ease, stroke 0.4s; }
+.gauge-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.gauge-num { font-family: var(--mono); font-size: 20px; font-weight: 700; color: var(--paper); line-height: 1; }
+.gauge-unit { font-family: var(--mono); font-size: 9px; color: var(--paper-mute); margin-top: 2px; letter-spacing: 0.06em; }
+
+.gauge-side { display: flex; flex-direction: column; gap: 9px; flex: 1; }
+.gside-item { display: flex; justify-content: space-between; align-items: baseline; }
+.gside-key { font-size: 11px; color: var(--paper-dim); }
+.gside-val { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--paper); }
+
+/* ── Satellites ── */
+.sat-row { display: flex; align-items: baseline; gap: 14px; }
+.sat-count { font-family: var(--mono); font-size: 30px; font-weight: 700; color: var(--paper); line-height: 1; }
+.sat-dots { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
+.sat-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--night-3); border: 1px solid var(--line-2); transition: all 0.3s; }
+.sat-dot.on { background: var(--sky); border-color: var(--sky); box-shadow: 0 0 5px var(--sky); }
+
+/* ── Activité ── */
+.act-row { display: flex; align-items: center; gap: 14px; }
+.act-icon { width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; }
+.act-icon::after { content: ''; position: absolute; inset: -6px; border-radius: 50%; border: 1.5px solid currentColor; opacity: 0; animation: actPulse 2.4s ease-out infinite; }
+@keyframes actPulse { 0%{transform:scale(0.85);opacity:0.5;} 70%{transform:scale(1.3);opacity:0;} 100%{transform:scale(1.3);opacity:0;} }
+.act-name { font-family: var(--display); font-size: 19px; font-weight: 600; line-height: 1; }
+.act-sub { font-size: 11.5px; color: var(--paper-dim); margin-top: 5px; }
+
+/* ── IMU barres ── */
+.imu-rows { display: flex; flex-direction: column; gap: 9px; }
+.imu-line { display: flex; align-items: center; gap: 9px; }
+.imu-ax { font-family: var(--mono); font-size: 10px; font-weight: 700; width: 12px; flex-shrink: 0; }
+.imu-track { flex: 1; height: 6px; background: var(--night-3); border: 1px solid var(--line); border-radius: 4px; position: relative; overflow: hidden; }
+.imu-track::after { content: ''; position: absolute; left: 50%; top: 0; width: 1px; height: 100%; background: var(--line-2); }
+.imu-bar { position: absolute; top: 0; height: 100%; left: 50%; width: 0%; border-radius: 0 3px 3px 0; transition: width 0.35s ease; opacity: 0.9; }
+.imu-num { font-family: var(--mono); font-size: 10px; color: var(--paper-dim); width: 46px; text-align: right; flex-shrink: 0; }
+.imu-divider { height: 1px; background: var(--line); margin: 6px 0; }
+
+/* ── Batterie linéaire ── */
+.bat-row { display: flex; align-items: center; gap: 12px; }
+.bat-shell { flex: 1; height: 9px; background: var(--night-3); border-radius: 5px; overflow: hidden; border: 1px solid var(--line); }
+.bat-fill { height: 100%; border-radius: 5px; transition: width 0.5s, background 0.5s; width: 0%; }
+.bat-pct { font-family: var(--mono); font-size: 14px; font-weight: 700; color: var(--paper); min-width: 40px; text-align: right; }
+
+/* ── Historique (timeline) ── */
+.timeline { display: flex; flex-direction: column; }
+.tl-item {
+  display: flex; gap: 12px; padding: 11px 6px;
+  cursor: pointer; border-radius: var(--r-sm);
+  border-bottom: 1px solid var(--line);
+  position: relative;
+}
+.tl-item:hover { background: var(--night-2); }
+.tl-item:last-child { border-bottom: none; }
+.tl-time { font-family: var(--mono); font-size: 11.5px; color: var(--teal); font-weight: 600; flex-shrink: 0; width: 58px; }
+.tl-body { flex: 1; min-width: 0; }
+.tl-pos { font-family: var(--mono); font-size: 11px; color: var(--paper-dim); }
+.tl-meta { display: flex; align-items: center; gap: 5px; font-size: 10.5px; color: var(--paper-mute); margin-top: 3px; }
+.tl-act { display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; padding: 2px 9px; border-radius: 20px; font-size: 9.5px; font-weight: 700; }
+
+.empty-note { text-align: center; color: var(--paper-mute); font-size: 12px; padding: 30px 10px; }
+
+/* ════════════════════════════════════════════════════════════
+   DESKTOP — fiche devient panneau latéral droit, pas de bottom sheet
+   ════════════════════════════════════════════════════════════ */
+@media (min-width: 860px) {
+  #sheet {
+    top: 0; right: 0; left: auto; bottom: 0;
+    width: var(--sheet-w-desktop); height: 100%;
+    border-radius: 0;
+    border-top: none; border-left: 1px solid var(--line-2);
+    transform: translateX(100%);
+    box-shadow: -14px 0 40px rgba(0,0,0,0.3);
+  }
+  #sheet.expanded { transform: translateX(0); }
+  .sheet-handle-zone { display: none; }
+  .sheet-summary { padding-top: 18px; cursor: default; }
+  .chev { display: none; }
+  body.sheet-expanded #recenter-fab,
+  body:not(.sheet-expanded) #recenter-fab { bottom: 14px; }
+  body.sheet-expanded #recenter-fab { right: calc(var(--sheet-w-desktop) + 14px); }
+  #peek-tab {
+    display: flex !important;
+  }
+}
+
+/* Onglet pour ré-ouvrir la fiche repliée — desktop uniquement */
+#peek-tab {
+  display: none;
+  position: absolute; top: 50%; right: var(--sheet-w-desktop);
+  transform: translateY(-50%);
+  z-index: 210;
+  width: 26px; height: 64px;
+  background: var(--night-1);
+  border: 1px solid var(--line-2);
+  border-right: none;
+  border-radius: 12px 0 0 12px;
+  align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: right 0.4s cubic-bezier(0.32,0.72,0,1);
+}
+body.sheet-expanded #peek-tab { right: var(--sheet-w-desktop); opacity: 0; pointer-events: none; }
+body:not(.sheet-expanded) #peek-tab { right: 0; }
+
+@media (max-width: 859px) { #peek-tab { display: none !important; } }
+
+@media (max-width: 480px) {
+  .kv-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .gauge-row { gap: 12px; }
+  .gauge-wrap { width: 84px; height: 84px; }
+  .gauge-wrap svg { width: 84px; height: 84px; }
+  .field-card { padding: 12px 13px; }
+}
+
+/* Transitions globales de thème */
+body, #sheet, #notif-panel, .field-card, .ctrl-btn, .toast, #topbar {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<!-- ══ BANDEAU SUPÉRIEUR ══ -->
+<div id="topbar">
+  <div class="seal">
+    <div class="seal-ring pulse" id="sealRing"></div>
+    <div class="seal-core">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#07090c" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+    </div>
+  </div>
+  <div class="brandblock">
+    <span class="brand-name">Betrack&nbsp;Pro</span>
+    <span class="brand-tag">Poste de garde · Adamaoua</span>
+  </div>
+  <div class="tb-spacer"></div>
+  <div id="statusGroup">
+    <div id="statusDot" class="dot dot-wait"></div>
+    <span id="statusTxt">Recherche</span>
+  </div>
+  <div id="notif-bell" onclick="toggleNotifPanel()" title="Notifications">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--paper-dim)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+      <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+    </svg>
+    <span id="notif-badge"></span>
+  </div>
+  <div id="themeToggle" onclick="toggleTheme()" title="Mode clair/sombre">
+    <svg id="themeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--paper-dim)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+  </div>
+</div>
+
+<!-- ══ PANNEAU NOTIFICATIONS ══ -->
+<div id="notif-panel">
+  <div class="np-header">
+    <span class="np-title">Notifications</span>
+    <span class="np-clear" onclick="clearAllNotifs()">Tout effacer</span>
+  </div>
+  <div id="np-list" class="np-list scroll-thin">
+    <div class="np-empty" id="np-empty">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--paper-mute)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      <span>Aucune alerte pour l'instant</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TOASTS ══ -->
+<div id="toast-container"></div>
+
+<!-- ══ CONTRÔLES CARTE ══ -->
+<div class="map-ctrl">
+  <div class="ctrl-btn" onclick="zoomIn()" title="Zoom +">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--paper-dim)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+  </div>
+  <div class="ctrl-btn" onclick="zoomOut()" title="Zoom -">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--paper-dim)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+  </div>
+  <div class="ctrl-btn" onclick="toggleSatellite()" title="Vue satellite">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--paper-dim)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"/></svg>
+  </div>
+</div>
+
+<div id="recenter-fab" onclick="recenterMap()" title="Recentrer sur l'animal">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#07090c" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+</div>
+
+<!-- ══ ONGLET RÉ-OUVERTURE (desktop) ══ -->
+<div id="peek-tab" onclick="expandSheet()">
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--paper-dim)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+</div>
+
+<!-- ══ FICHE DE DONNÉES ══ -->
+<div id="sheet">
+  <div class="sheet-handle-zone" id="handleZone">
+    <div class="sheet-handle"></div>
+  </div>
+
+  <div class="sheet-summary" onclick="toggleSheet()">
+    <div class="subject-mark">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--copper)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9a2 2 0 0 1 2-2h2l1.5-2h5L16 7h2a2 2 0 0 1 2 2v10"/><circle cx="9" cy="15" r="1.5"/><circle cx="15" cy="15" r="1.5"/></svg>
+    </div>
+    <div>
+      <div class="subject-id">Animal 1</div>
+      <div class="subject-sub" id="sheet-status-sub">Collier GPS · en attente</div>
+    </div>
+    <div class="sheet-summary-right">
+      <div class="summary-chip">Vitesse<b id="peekSpeed">0.0</b></div>
+      <div class="summary-chip">Batterie<b id="peekBat">--%</b></div>
+      <div class="chev">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--paper-dim)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <div class="sheet-tabs">
+    <div class="sheet-tab active" data-pane="suivi" onclick="switchPane('suivi')">Suivi</div>
+    <div class="sheet-tab" data-pane="capteurs" onclick="switchPane('capteurs')">Capteurs</div>
+    <div class="sheet-tab" data-pane="historique" onclick="switchPane('historique')">Historique</div>
+  </div>
+
+  <div class="sheet-body scroll-thin">
+
+    <!-- ── ONGLET SUIVI ── -->
+    <div class="sheet-pane active" id="pane-suivi">
+
+      <div class="field-card">
+        <div class="field-label accent">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          Position
+        </div>
+        <div class="kv-grid">
+          <div class="kv-cell"><span class="kv-key">Latitude</span><span class="kv-val c-teal" id="latD">---.------</span></div>
+          <div class="kv-cell"><span class="kv-key">Longitude</span><span class="kv-val c-teal" id="lngD">---.------</span></div>
+          <div class="kv-cell"><span class="kv-key">Altitude</span><span class="kv-val" id="altD">-- m</span></div>
+          <div class="kv-cell"><span class="kv-key">Direction</span>
+            <span class="kv-val c-sky" style="display:flex;align-items:center;gap:5px;">
+              <svg id="dirIcon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;transition:transform 0.3s;"><polygon points="12 2 15 11 12 9 9 11 12 2"/><polygon points="12 22 9 13 12 15 15 13 12 22" fill="currentColor" opacity="0.3"/></svg>
+              <span id="dirTxt">--</span>
+            </span>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:12px;padding-top:12px;border-top:1px solid var(--line);">
+          <span class="kv-key" id="dateD" style="font-family:var(--mono);">--/--/----</span>
+          <span class="kv-key" id="timeD" style="font-family:var(--mono);">--:--:--</span>
+        </div>
+      </div>
+
+      <div class="field-card">
+        <div class="field-label">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--sky)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+          Vitesse de déplacement
+        </div>
+        <div class="gauge-row">
+          <div class="gauge-wrap">
+            <svg width="96" height="96" viewBox="0 0 96 96">
+              <circle class="gauge-track" cx="48" cy="48" r="40"/>
+              <circle class="gauge-fill" id="speedGaugeFill" cx="48" cy="48" r="40" stroke="var(--sky)" stroke-dasharray="0 252"/>
+            </svg>
+            <div class="gauge-center">
+              <span class="gauge-num" id="speedD">0.0</span>
+              <span class="gauge-unit">km/h</span>
+            </div>
+          </div>
+          <div class="gauge-side">
+            <div class="gside-item"><span class="gside-key">m/s</span><span class="gside-val" id="speedMs">0.00</span></div>
+            <div class="gside-item"><span class="gside-key">nœuds</span><span class="gside-val" id="speedKn">0.0</span></div>
+            <div class="gside-item"><span class="gside-key">Distance totale</span><span class="gside-val" id="distKm">0.000 km</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="field-card">
+        <div class="field-label">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--paper-dim)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"/></svg>
+          Satellites
+        </div>
+        <div class="sat-row">
+          <span class="sat-count" id="satCount">0</span>
+          <div class="sat-dots" id="satDots"></div>
+        </div>
+      </div>
+
+      <div class="field-card">
+        <div class="field-label">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--ochre)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          Activité du bétail
+        </div>
+        <div class="act-row">
+          <div class="act-icon" id="actIcon"></div>
+          <div>
+            <div class="act-name" id="actName">--</div>
+            <div class="act-sub" id="actSub">En attente de données</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="field-card">
+        <div class="field-label accent">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="6" width="18" height="12" rx="2"/><line x1="23" y1="13" x2="23" y2="11"/></svg>
+          Batterie du collier
+        </div>
+        <div class="bat-row">
+          <div class="bat-shell"><div class="bat-fill" id="batFill"></div></div>
+          <span class="bat-pct" id="batPct">--%</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ── ONGLET CAPTEURS ── -->
+    <div class="sheet-pane" id="pane-capteurs">
+
+      <div class="field-card">
+        <div class="field-label">Accéléromètre (g)</div>
+        <div class="imu-rows">
+          <div class="imu-line"><span class="imu-ax" style="color:var(--ember)">X</span><div class="imu-track"><div class="imu-bar" id="bx" style="background:var(--ember)"></div></div><span class="imu-num" id="vx">0.000</span></div>
+          <div class="imu-line"><span class="imu-ax" style="color:var(--ochre)">Y</span><div class="imu-track"><div class="imu-bar" id="by" style="background:var(--ochre)"></div></div><span class="imu-num" id="vy">0.000</span></div>
+          <div class="imu-line"><span class="imu-ax" style="color:var(--sky)">Z</span><div class="imu-track"><div class="imu-bar" id="bz" style="background:var(--sky)"></div></div><span class="imu-num" id="vz">0.000</span></div>
+        </div>
+      </div>
+
+      <div class="field-card">
+        <div class="field-label">Gyroscope (°/s)</div>
+        <div class="imu-rows">
+          <div class="imu-line"><span class="imu-ax" style="color:var(--teal)">X</span><div class="imu-track"><div class="imu-bar" id="gx" style="background:var(--teal)"></div></div><span class="imu-num" id="gvx">0.0</span></div>
+          <div class="imu-line"><span class="imu-ax" style="color:var(--teal)">Y</span><div class="imu-track"><div class="imu-bar" id="gy" style="background:var(--teal)"></div></div><span class="imu-num" id="gvy">0.0</span></div>
+          <div class="imu-line"><span class="imu-ax" style="color:var(--teal)">Z</span><div class="imu-track"><div class="imu-bar" id="gz" style="background:var(--teal)"></div></div><span class="imu-num" id="gvz">0.0</span></div>
+        </div>
+      </div>
+
+      <div class="field-card">
+        <div class="field-label">Magnétomètre (µT)</div>
+        <div class="imu-rows">
+          <div class="imu-line"><span class="imu-ax" style="color:var(--ember)">X</span><div class="imu-track"><div class="imu-bar" id="mx" style="background:var(--ember)"></div></div><span class="imu-num" id="mvx">0.0</span></div>
+          <div class="imu-line"><span class="imu-ax" style="color:var(--ochre)">Y</span><div class="imu-track"><div class="imu-bar" id="my" style="background:var(--ochre)"></div></div><span class="imu-num" id="mvy">0.0</span></div>
+          <div class="imu-line"><span class="imu-ax" style="color:var(--sky)">Z</span><div class="imu-track"><div class="imu-bar" id="mz" style="background:var(--sky)"></div></div><span class="imu-num" id="mvz">0.0</span></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ── ONGLET HISTORIQUE ── -->
+    <div class="sheet-pane" id="pane-historique">
+      <div class="timeline" id="historyList">
+        <p class="empty-note">Chargement…</p>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════
+//  ACTIVITÉS — icônes + métadonnées
+// ══════════════════════════════════════════════════════
+const ACT_SVG = {
+  Couche:  `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 17h20M6 17V9a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8"/><circle cx="7" cy="9" r="1"/></svg>`,
+  Debout:  `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2"/><line x1="12" y1="7" x2="12" y2="14"/><polyline points="9 21 12 17 15 21"/><line x1="9" y1="11" x2="15" y2="11"/></svg>`,
+  Marche:  `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="5" r="2"/><path d="M9 21l1.5-6L8 13l3-6"/><path d="M15 21l-1.5-6L16 13l-3-6"/><path d="M6.5 11.5l2.5 2 4-1"/></svg>`,
+  Galop:   `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="2"/><path d="M7 21l2.5-8L7 11l4-5"/><path d="M17 21l-2.5-8L17 11l-4-5"/><path d="M5 8l3 3 4-1 3-3"/></svg>`,
+  Inconnu: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+};
+const ACT_SMALL = k => (ACT_SVG[k]||'').replace('width="24"','width="11"').replace('height="24"','height="11"');
+
+const ACTIVITIES = {
+  Couche:  { bg:'rgba(111,168,217,0.15)', fg:'#6fa8d9', sub:"L'animal est allongé au repos" },
+  Debout:  { bg:'rgba(74,155,142,0.15)',  fg:'#4a9b8e', sub:"L'animal est debout, immobile" },
+  Marche:  { bg:'rgba(232,179,57,0.15)',  fg:'#e8b339', sub:"L'animal est en mouvement lent" },
+  Galop:   { bg:'rgba(232,93,78,0.15)',   fg:'#e85d4e', sub:"L'animal court rapidement" },
+  Inconnu: { bg:'rgba(244,237,225,0.06)', fg:'#9aa3ad', sub:"Activité non déterminée" },
+};
+const actInfo = a => ACTIVITIES[a] || ACTIVITIES.Inconnu;
+
+const HI = {
+  pin:      `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>`,
+  mountain: `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 20 15 4 22 20 3 20"/></svg>`,
+  ruler:    `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18"/><path d="M3 6l3 6-3 6"/></svg>`,
+};
+
+// ══════════════════════════════════════════════════════
+//  FIREBASE
+// ══════════════════════════════════════════════════════
+const FB_CONFIG = {
+  apiKey:"AIzaSyBadTAQ_urAu0jUkMmHcYifukCCmhL_4vE",
+  authDomain:"animal-tracking-system-170dd.firebaseapp.com",
+  databaseURL:"https://animal-tracking-system-170dd-default-rtdb.firebaseio.com",
+  projectId:"animal-tracking-system-170dd",
+};
+
+let gMap, gMarker, gPolyline;
+let crumbs = [], firstFix = true, lastPos = null;
+
+function initMap() {
+  gMap = new google.maps.Map(document.getElementById('map'), {
+    center: {lat: 7.32, lng: 13.58}, zoom: 16,
+    disableDefaultUI: true,
+    styles: document.documentElement.getAttribute('data-theme') === 'light' ? LIGHT_MAP_STYLE : DARK_MAP_STYLE,
+  });
+  gPolyline = new google.maps.Polyline({
+    path: [], strokeColor: '#d97757', strokeWeight: 3, strokeOpacity: 0.8, map: gMap
+  });
+  initFirebase();
+  gMap.addListener('click', () => { /* tap carte : ne ferme pas la fiche, juste déselectionne */ });
+}
+
+function initFirebase() {
+  firebase.initializeApp(FB_CONFIG);
+  const db = firebase.database();
+
+  db.ref('/Animal1/GPS-Data').on('value', snap => {
+    const d = snap.val();
+    if (!d) return;
+    setLive();
+    if (d.Latitude)                        updateGPS(d);
+    if (d.Batterie !== undefined)           updateBattery(d.Batterie);
+    if (d.Accel_X  !== undefined)           updateIMU(d);
+    if (d.Mag_X    !== undefined)           updateMag(d);
+    if (d.Activite)                         updateActivity(d.Activite);
+    if (d.Distance_totale_km !== undefined) updateDistance(d);
+  });
+
+  db.ref('/Animal1/SaveData').limitToLast(40).on('value', snap => {
+    const list = document.getElementById('historyList');
+    list.innerHTML = '';
+    const data = snap.val();
+    if (!data) {
+      list.innerHTML = '<p class="empty-note">Aucun historique enregistré pour l\'instant</p>';
+      return;
+    }
+    Object.keys(data).reverse().forEach(key => {
+      const item = data[key];
+      const div  = document.createElement('div');
+      div.className = 'tl-item';
+      const ai = actInfo(item.Activite);
+      div.innerHTML = `
+        <span class="tl-time">${item.Local_Time||'--:--:--'}</span>
+        <div class="tl-body">
+          <div class="tl-pos">${(+item.Latitude).toFixed(5)}, ${(+item.Longitude).toFixed(5)}</div>
+          <div class="tl-meta">${HI.mountain} ${(+item.Altitude_m||0).toFixed(1)} m &nbsp; ${HI.ruler} ${(+item.Distance_totale_m||0).toFixed(0)} m</div>
+          ${item.Activite?`<span class="tl-act" style="background:${ai.bg};color:${ai.fg}">${ACT_SMALL(item.Activite)} ${item.Activite}</span>`:''}
+        </div>`;
+      div.onclick = () => { gMap.panTo({lat: +item.Latitude, lng: +item.Longitude}); switchPane('suivi'); };
+      list.appendChild(div);
+    });
+  });
+}
+
+function updateGPS(d) {
+  const lat = parseFloat(d.Latitude), lng = parseFloat(d.Longitude);
+  document.getElementById('latD').textContent  = lat.toFixed(6);
+  document.getElementById('lngD').textContent  = lng.toFixed(6);
+  document.getElementById('altD').textContent  = d.Altitude_m !== undefined ? (+d.Altitude_m).toFixed(1)+' m' : '-- m';
+  const dirVal = d.Direction;
+  document.getElementById('dirTxt').textContent = dirVal !== undefined ? dirVal : '--';
+  const dirDeg = parseFloat(dirVal);
+  if (!isNaN(dirDeg)) document.getElementById('dirIcon').style.transform = `rotate(${dirDeg}deg)`;
+  document.getElementById('dateD').textContent = d.Date      || '--/--/----';
+  document.getElementById('timeD').textContent = d.Local_Time|| '--:--:--';
+
+  const kmh = d.Vitesse_kmh !== undefined ? +d.Vitesse_kmh : 0;
+  document.getElementById('speedD').textContent  = kmh.toFixed(1);
+  document.getElementById('peekSpeed').textContent = kmh.toFixed(1) + ' km/h';
+  document.getElementById('speedMs').textContent = (kmh / 3.6).toFixed(2);
+  document.getElementById('speedKn').textContent = (kmh / 1.852).toFixed(1);
+  setGauge('speedGaugeFill', kmh, 40); // échelle 0-40 km/h pour bétail
+
+  const sat = parseInt(d.Satellites)||0;
+  document.getElementById('satCount').textContent = sat;
+  const de = document.getElementById('satDots');
+  de.innerHTML = '';
+  for (let i = 0; i < 12; i++) {
+    const s = document.createElement('div');
+    s.className = 'sat-dot' + (i < sat ? ' on' : '');
+    de.appendChild(s);
+  }
+  updateMarker(lat, lng);
+  checkSatelliteAlert(sat);
+  if (kmh > 30) checkSpeedAlert(kmh);
+}
+
+// Jauge en arc — circonférence r=40 → 2*PI*40 ≈ 251.33
+function setGauge(elId, value, max) {
+  const C = 251.33;
+  const pct = Math.max(0, Math.min(1, value / max));
+  const el = document.getElementById(elId);
+  el.style.strokeDasharray = `${(pct*C).toFixed(1)} ${C}`;
+}
+
+// ═══════════════════════════════════════════
+//  MARQUEUR — pin cuivre signature, halo sarcelle
+// ═══════════════════════════════════════════
+function updateMarker(lat, lng) {
+  const pos = {lat, lng};
+  lastPos = pos;
+  if (firstFix) {
+    firstFix = false;
+    const svgMarker = {
+      url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+        <svg xmlns="http://www.w3.org/2000/svg" width="58" height="70" viewBox="0 0 58 70">
+          <style>
+            @keyframes pulse-ring { 0% { transform: scale(0.4); opacity: 1; } 100% { transform: scale(1.3); opacity: 0; } }
+            @keyframes marker-bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+            .ring { transform-origin: 29px 29px; animation: pulse-ring 2.2s cubic-bezier(0.215,0.61,0.355,1) infinite; }
+            .pin-group { transform-origin: 29px 46px; animation: marker-bounce 2.2s ease-in-out infinite; }
+          </style>
+          <defs>
+            <filter id="sh" x="-20%" y="-10%" width="140%" height="130%">
+              <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="rgba(0,0,0,0.4)"/>
+            </filter>
+          </defs>
+          <circle class="ring" cx="29" cy="29" r="17" fill="none" stroke="#4a9b8e" stroke-width="3"/>
+          <circle class="ring" cx="29" cy="29" r="17" fill="rgba(74,155,142,0.18)"/>
+          <g class="pin-group">
+            <path d="M29 11C19.06 11 11 19.06 11 29c0 13 18 29 18 29s18-16 18-29c0-9.94-8.06-18-18-18z" fill="#d97757" filter="url(#sh)"/>
+            <circle cx="29" cy="29" r="6" fill="#07090c"/>
+          </g>
+        </svg>
+      `),
+      scaledSize: new google.maps.Size(58, 70),
+      anchor:     new google.maps.Point(29, 58),
+    };
+    gMarker = new google.maps.Marker({
+      position: pos, map: gMap, icon: svgMarker,
+      title: 'Animal1 — BETRACK PRO',
+      animation: google.maps.Animation.DROP,
+    });
+    gMap.setCenter(pos);
+  } else {
+    gMarker.setPosition(pos);
+  }
+  crumbs.push(pos);
+  gPolyline.setPath(crumbs);
+}
+
+function updateBattery(lvl) {
+  lvl = Math.max(0, Math.min(100, lvl));
+  const f = document.getElementById('batFill');
+  f.style.width = lvl + '%';
+  f.style.background = lvl <= 20 ? 'var(--ember)' : lvl <= 50 ? 'var(--ochre)' : 'var(--teal)';
+  document.getElementById('batPct').textContent = lvl + '%';
+  document.getElementById('peekBat').textContent = lvl + '%';
+  checkBatteryAlert(lvl);
+}
+
+function setIMUBar(barId, numId, val, max) {
+  const pct = Math.min(50, (Math.abs(val) / max) * 50);
+  document.getElementById(barId).style.width = pct + '%';
+  document.getElementById(numId).textContent = val.toFixed(3);
+}
+function setGyroBar(barId, numId, val, max) {
+  const pct = Math.min(50, (Math.abs(val) / max) * 50);
+  document.getElementById(barId).style.width = pct + '%';
+  document.getElementById(numId).textContent = val.toFixed(1);
+}
+function setMagBar(barId, numId, val, max) {
+  const pct = Math.min(50, (Math.abs(val) / max) * 50);
+  document.getElementById(barId).style.width = pct + '%';
+  document.getElementById(numId).textContent = val.toFixed(1);
+}
+
+function updateIMU(d) {
+  setIMUBar('bx','vx', +d.Accel_X, 4);
+  setIMUBar('by','vy', +d.Accel_Y, 4);
+  setIMUBar('bz','vz', +d.Accel_Z, 4);
+  setGyroBar('gx','gvx', +(d.Gyro_X||0), 250);
+  setGyroBar('gy','gvy', +(d.Gyro_Y||0), 250);
+  setGyroBar('gz','gvz', +(d.Gyro_Z||0), 250);
+}
+function updateMag(d) {
+  setMagBar('mx','mvx', +(d.Mag_X||0), 100);
+  setMagBar('my','mvy', +(d.Mag_Y||0), 100);
+  setMagBar('mz','mvz', +(d.Mag_Z||0), 100);
+}
+
+function updateActivity(act) {
+  const info = actInfo(act);
+  const el   = document.getElementById('actIcon');
+  el.style.background = info.bg;
+  el.style.color      = info.fg;
+  el.innerHTML = ACT_SVG[act] || ACT_SVG.Inconnu;
+  document.getElementById('actName').textContent = act;
+  document.getElementById('actName').style.color = info.fg;
+  document.getElementById('actSub').textContent  = info.sub;
+  checkActivityAlert(act);
+}
+
+function updateDistance(d) {
+  document.getElementById('distKm').textContent = (+(d.Distance_totale_km||0)).toFixed(3) + ' km';
+}
+
+function setLive() {
+  const dot = document.getElementById('statusDot');
+  dot.classList.replace('dot-wait','dot-live');
+  document.getElementById('statusTxt').textContent = 'En direct';
+  document.getElementById('sheet-status-sub').textContent = 'Collier GPS · en direct';
+  document.getElementById('sealRing').style.borderColor = 'var(--teal)';
+  checkConnectionAlert(true);
+}
+
+// ══════════════════════════════════════════════════════
+//  NOTIFICATIONS
+// ══════════════════════════════════════════════════════
+const NOTIF_TYPES = {
+  danger:  { color:'#e85d4e', bg:'rgba(232,93,78,0.15)',  dot:'#e85d4e', label:'Alerte'    },
+  warning: { color:'#e8b339', bg:'rgba(232,179,57,0.15)', dot:'#e8b339', label:'Attention' },
+  info:    { color:'#6fa8d9', bg:'rgba(111,168,217,0.15)',dot:'#6fa8d9', label:'Info'       },
+  success: { color:'#4a9b8e', bg:'rgba(74,155,142,0.15)', dot:'#4a9b8e', label:'Ok'         },
+};
+const NOTIF_ICONS = {
+  danger:  `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+  warning: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  info:    `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
+  success: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
+};
+
+let notifications  = [];
+let notifPanelOpen = false;
+let unreadCount    = 0;
+const notifFlags   = { batLow:false, batCritical:false, batOk:true, satLow:false, galop:false, offline:false, connected:false };
+
+function pushNotif(type, title, message, showToast = true, duration = 5000) {
+  const t   = NOTIF_TYPES[type] || NOTIF_TYPES.info;
+  const now = new Date();
+  const time = now.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  const notif = { id: Date.now() + Math.random(), type, title, message, time, read: false };
+  notifications.unshift(notif);
+  unreadCount++;
+  renderNotifPanel();
+  updateBadge();
+  if (showToast) spawnToast(notif, duration);
+  if (type === 'danger' && navigator.vibrate) navigator.vibrate([200,100,200]);
+}
+
+function renderNotifPanel() {
+  const list  = document.getElementById('np-list');
+  const empty = document.getElementById('np-empty');
+  [...list.querySelectorAll('.np-item')].forEach(el => el.remove());
+  if (notifications.length === 0) { empty.style.display = 'flex'; return; }
+  empty.style.display = 'none';
+  notifications.slice(0, 40).forEach(n => {
+    const t   = NOTIF_TYPES[n.type] || NOTIF_TYPES.info;
+    const div = document.createElement('div');
+    div.className = 'np-item ' + (n.read ? 'read' : 'unread');
+    div.innerHTML = `
+      <div class="np-dot" style="background:${t.dot};"></div>
+      <div class="np-body">
+        <span class="np-tag" style="background:${t.bg};color:${t.color}">${t.label}</span>
+        <div class="np-msg">${n.title} — ${n.message}</div>
+        <div class="np-time">${n.time}</div>
+      </div>`;
+    div.onclick = () => { n.read = true; div.classList.replace('unread','read'); };
+    list.appendChild(div);
+  });
+}
+
+function updateBadge() {
+  const badge = document.getElementById('notif-badge');
+  if (unreadCount > 0) {
+    badge.textContent = unreadCount > 99 ? '99+' : unreadCount;
+    badge.classList.add('show');
+  } else {
+    badge.classList.remove('show');
+  }
+}
+
+function spawnToast(notif, duration) {
+  const t   = NOTIF_TYPES[notif.type] || NOTIF_TYPES.info;
+  const div = document.createElement('div');
+  div.className = 'toast';
+  div.innerHTML = `
+    <div class="toast-icon" style="background:${t.bg};color:${t.color}">${NOTIF_ICONS[notif.type]||NOTIF_ICONS.info}</div>
+    <div class="toast-body">
+      <div class="toast-title">${notif.title}</div>
+      <div class="toast-msg">${notif.message}</div>
+    </div>
+    <span class="toast-close" onclick="dismissToast(this.parentElement)">&times;</span>
+    <div class="toast-bar" style="background:${t.color};animation-duration:${duration}ms"></div>`;
+  const container = document.getElementById('toast-container');
+  if (container.children.length >= 3) dismissToast(container.lastElementChild);
+  container.prepend(div);
+  setTimeout(() => dismissToast(div), duration);
+}
+function dismissToast(el) {
+  if (!el || el.classList.contains('hiding')) return;
+  el.classList.add('hiding');
+  setTimeout(() => el.remove(), 300);
+}
+
+function toggleNotifPanel() {
+  notifPanelOpen = !notifPanelOpen;
+  document.getElementById('notif-panel').classList.toggle('open', notifPanelOpen);
+  if (notifPanelOpen) {
+    notifications.forEach(n => n.read = true);
+    unreadCount = 0;
+    updateBadge();
+    renderNotifPanel();
+  }
+}
+
+document.addEventListener('click', e => {
+  if (!notifPanelOpen) return;
+  const panel = document.getElementById('notif-panel');
+  const bell  = document.getElementById('notif-bell');
+  if (panel.contains(e.target) || bell.contains(e.target)) return;
+  notifPanelOpen = false;
+  panel.classList.remove('open');
+});
+
+function clearAllNotifs() {
+  notifications = []; unreadCount = 0;
+  updateBadge(); renderNotifPanel();
+}
+
+// Alertes
+function checkBatteryAlert(pct) {
+  if (pct <= 5 && !notifFlags.batCritical) {
+    notifFlags.batCritical = true; notifFlags.batLow = true; notifFlags.batOk = false;
+    pushNotif('danger', 'Batterie critique', `Niveau à ${pct}% — Le système va s'éteindre !`, true, 8000);
+  } else if (pct <= 20 && !notifFlags.batLow) {
+    notifFlags.batLow = true; notifFlags.batOk = false;
+    pushNotif('warning', 'Batterie faible', `Niveau à ${pct}% — Rechargez bientôt.`, true, 6000);
+  } else if (pct > 25 && !notifFlags.batOk) {
+    notifFlags.batOk = true; notifFlags.batLow = false; notifFlags.batCritical = false;
+    pushNotif('success', 'Batterie OK', `Niveau remonté à ${pct}%.`, true, 4000);
+  }
+}
+function checkSatelliteAlert(sat) {
+  if (sat < 4 && !notifFlags.satLow) {
+    notifFlags.satLow = true;
+    pushNotif('warning', 'Signal GPS faible', `Seulement ${sat} satellite(s) — Précision réduite.`, true, 5000);
+  } else if (sat >= 4 && notifFlags.satLow) {
+    notifFlags.satLow = false;
+    pushNotif('success', 'Signal GPS restauré', `${sat} satellites — Précision normale.`, true, 4000);
+  }
+}
+function checkActivityAlert(act) {
+  if (act === 'Galop' && !notifFlags.galop) {
+    notifFlags.galop = true;
+    pushNotif('danger', 'Galop détecté', "L'animal court rapidement — Vérifiez la situation.", true, 7000);
+  } else if (act !== 'Galop') { notifFlags.galop = false; }
+}
+function checkSpeedAlert(kmh) {
+  pushNotif('warning', 'Vitesse élevée', `L'animal se déplace à ${kmh.toFixed(1)} km/h.`, true, 5000);
+}
+function checkConnectionAlert(isLive) {
+  if (isLive && !notifFlags.connected) {
+    notifFlags.connected = true; notifFlags.offline = false;
+    pushNotif('success', 'Connexion établie', 'Données reçues en temps réel depuis Firebase.', true, 4000);
+  }
+}
+
+// ══ STYLES CARTE ══
+const DARK_MAP_STYLE = [
+  { elementType:"geometry", stylers:[{color:"#0d1015"}] },
+  { elementType:"labels.text.stroke", stylers:[{color:"#0d1015"}] },
+  { elementType:"labels.text.fill", stylers:[{color:"#6b7280"}] },
+  { featureType:"road", elementType:"geometry", stylers:[{color:"#1c212c"}] },
+  { featureType:"road", elementType:"labels.text.fill", stylers:[{color:"#7a8a8a"}] },
+  { featureType:"water", elementType:"geometry", stylers:[{color:"#0a1a18"}] },
+  { featureType:"poi", elementType:"geometry", stylers:[{color:"#16191f"}] },
+  { featureType:"administrative", elementType:"geometry", stylers:[{color:"#2c2418"}] },
+  { featureType:"transit", elementType:"geometry", stylers:[{color:"#16191f"}] },
+];
+const LIGHT_MAP_STYLE = [
+  { elementType:"geometry", stylers:[{color:"#f4ede1"}] },
+  { elementType:"labels.text.fill", stylers:[{color:"#5e564a"}] },
+  { elementType:"labels.text.stroke", stylers:[{color:"#f4ede1"}] },
+  { featureType:"road", elementType:"geometry", stylers:[{color:"#ffffff"}] },
+  { featureType:"water", elementType:"geometry", stylers:[{color:"#cfe3df"}] },
+  { featureType:"poi", elementType:"geometry", stylers:[{color:"#ebe2d0"}] },
+];
+
+// ══ TOGGLES ══
+function toggleTheme() {
+  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+  const next = isLight ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('betrackTheme', next);
+  document.getElementById('themeIcon').innerHTML = next === 'light'
+    ? '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'
+    : '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+  if (gMap) gMap.setOptions({ styles: next === 'dark' ? DARK_MAP_STYLE : LIGHT_MAP_STYLE });
+}
+
+(function() {
+  const saved = localStorage.getItem('betrackTheme');
+  const theme = saved || 'dark';
+  document.documentElement.setAttribute('data-theme', theme);
+  if (theme === 'light') {
+    document.addEventListener('DOMContentLoaded', () => {
+      const icon = document.getElementById('themeIcon');
+      if (icon) icon.innerHTML = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+    });
+  }
+})();
+
+// ══════════════════════════════════════════════════════
+//  FICHE DE DONNÉES — expand / collapse / onglets / drag
+// ══════════════════════════════════════════════════════
+function expandSheet() {
+  document.getElementById('sheet').classList.add('expanded');
+  document.body.classList.add('sheet-expanded');
+}
+function collapseSheet() {
+  document.getElementById('sheet').classList.remove('expanded');
+  document.body.classList.remove('sheet-expanded');
+}
+function toggleSheet() {
+  const expanded = document.getElementById('sheet').classList.contains('expanded');
+  expanded ? collapseSheet() : expandSheet();
+}
+
+function switchPane(name) {
+  document.querySelectorAll('.sheet-tab').forEach(t => t.classList.toggle('active', t.dataset.pane === name));
+  document.querySelectorAll('.sheet-pane').forEach(p => p.classList.toggle('active', p.id === 'pane-' + name));
+  if (!document.getElementById('sheet').classList.contains('expanded')) expandSheet();
+}
+
+// Glisser pour ouvrir/fermer (mobile)
+(function setupDrag() {
+  const sheet = document.getElementById('sheet');
+  const handleZone = document.getElementById('handleZone');
+  let startY = 0, currentY = 0, dragging = false, startedExpanded = false;
+
+  function onStart(y) {
+    dragging = true; startY = y; currentY = y;
+    startedExpanded = sheet.classList.contains('expanded');
+    sheet.style.transition = 'none';
+  }
+  function onMove(y) {
+    if (!dragging) return;
+    currentY = y;
+    const delta = currentY - startY;
+    const vh = window.innerHeight;
+    const peek = 132;
+    const collapsedY = vh * 0.86 - peek;
+    let base = startedExpanded ? 0 : collapsedY;
+    let next = Math.max(0, Math.min(collapsedY, base + delta));
+    sheet.style.transform = `translateY(${next}px)`;
+  }
+  function onEnd() {
+    if (!dragging) return;
+    dragging = false;
+    sheet.style.transition = '';
+    sheet.style.transform = '';
+    const delta = currentY - startY;
+    if (startedExpanded) {
+      if (delta > 80) collapseSheet(); else expandSheet();
+    } else {
+      if (delta < -80) expandSheet(); else collapseSheet();
+    }
+  }
+
+  handleZone.addEventListener('touchstart', e => onStart(e.touches[0].clientY), {passive:true});
+  handleZone.addEventListener('touchmove',  e => onMove(e.touches[0].clientY), {passive:true});
+  handleZone.addEventListener('touchend',   onEnd);
+  handleZone.addEventListener('mousedown', e => {
+    onStart(e.clientY);
+    const mm = e2 => onMove(e2.clientY);
+    const mu = () => { onEnd(); window.removeEventListener('mousemove', mm); window.removeEventListener('mouseup', mu); };
+    window.addEventListener('mousemove', mm);
+    window.addEventListener('mouseup', mu);
+  });
+})();
+
+function recenterMap() { if (gMap && lastPos) gMap.panTo(lastPos); }
+function zoomIn()      { if (gMap) gMap.setZoom(gMap.getZoom() + 1); }
+function zoomOut()     { if (gMap) gMap.setZoom(gMap.getZoom() - 1); }
+function toggleSatellite(){ if (gMap) gMap.setMapTypeId(gMap.getMapTypeId()==='roadmap'?'hybrid':'roadmap'); }
+</script>
+
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAbm1-GcB_vZ3Fgve8wHHZC0O-dK7RJJ4k&callback=initMap" async defer></script>
+</body>
+</html>
